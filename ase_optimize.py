@@ -279,7 +279,7 @@ def xtb_optimize(xyz_string:str, charge:int, method:str,
   - xyz_string (str) : xyz format string
   - charge (int) : molecular total chage
   - method (str) : xtb method
-    - supported methods : ["gfn0-xtb", "gfn1-xtb", "gfn2-xTB", "gfn-ff"]
+    - supported methods : ["gfn1-xtb", "gfn2-xTB", "gfn-ff"]
   - spinpol ( bool | None ) : number of unpaired electrons
   - uhf (int) : whether to use spin-polarized xTB ( see :  https://github.com/Andrew-S-Rosen/xtb_ase/blob/main/src/xtb_ase/calculator.py )
   - clear_log (bool) : clear optimization logging
