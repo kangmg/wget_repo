@@ -5,26 +5,26 @@ from ase.io import read
 from ase.calculators.mopac import MOPAC
 from ase.optimize import BFGS
 
-try: from openbabel import pybel
-except: pass
+try: from openbabel import pybel, openbabel
+except: print("import warning : openbabel")
 
 try: from rdkit.Chem import AllChem
-except: pass
+except: print("import warning : rdkit")
 
 try: from rdkit import Chem
 except: pass
 
 try: from xtb_ase import XTB
-except: pass
+except: print("import warning ")
 
 try: import torchani
-except: pass
+except: print("import warning : torchani")
 
 try: from aimnet2ase import aimnet2_optimize
-except: pass
+except: print("import warning : aimnet2ase")
 
 try: from tblite.ase import TBLite
-except: pass
+except: print("import warning : tblite")
 
 def smiles2mol(smiles:str, N_conformers:int=50)->str:
   """
