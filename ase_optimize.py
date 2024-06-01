@@ -56,6 +56,10 @@ def smiles2mol(smiles:str, N_conformers:int=50)->str:
     energy = ff.CalcEnergy()
     energies.append((conf_id, energy))
 
+  if not energies:
+    print(f"[MISSING VALUE WARNING] SMILES : {smiles}")
+    raise ValueError("No conformers were successfully optimized")
+        
   # get lowest conformer
   lowest_energy_idx, _ = min(energies, key=lambda x: x[-1])
 
