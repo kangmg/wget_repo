@@ -15,7 +15,7 @@ try: from rdkit import Chem
 except: pass
 
 try: from xtb_ase import XTB
-except: print("import warning ")
+except: print("import warning : xtb_ase")
 
 try: import torchani
 except: print("import warning : torchani")
