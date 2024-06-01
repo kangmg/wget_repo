@@ -4,6 +4,8 @@ import ase
 from ase.io import read
 from ase.calculators.mopac import MOPAC
 from ase.optimize import BFGS
+from rdkit import Chem
+from rdkit.Chem import AllChem
 
 try: from openbabel import pybel
 except: pass
