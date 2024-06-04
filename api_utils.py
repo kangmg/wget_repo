@@ -83,48 +83,6 @@ def get_API_result(moodTag:str, API_KEY, result_max=500)->dict:
       return json_data
     else:
       raise Exception(f"Fail to get API response.\n\nStatus code : {status}")
-
-def get_youtube_url(LAST_FM_URL:str, headers:dict=headers)->str:
-  '''
-  Description
-  -----------
-  Last.FM 페이지의 youtube 링크를 추출하는 함수
-
-  Parameters
-  ----------
-  - LAST_FM_URL(str) : Last.FM 페이지 노래 정보 링크
-  - header : request header
-
-  Returns
-  -------
-  - youtube url(str) : 해당 곡의 youtube 링크
-
-  Usage
-  -----
-  >>>url = 'https://www.last.fm/music/Coldplay/_/The+Scientist'
-  ...
-  >>> result = parse_url(url)
-  >>> print(result)
-  '''
-  request = urllib.request.Request(LAST_FM_URL, headers=headers)
-  response = urllib.request.urlopen(request)
-  status = response.status
-
-  if status == 200:
-    # LAST_FM_URL 페이지 결과 bs4로 받기
-    html_content = response.read()
-    soup = BeautifulSoup(html_content, 'html5lib')
-    # youtube 링크 요소 찾기
-    element = soup.select_one('#mantle_skin > header > div.header-new-inner > div.header-new-content > div > div > a')
-    # youtube 링크 획득
-    yt_url = element["href"]
-    if yt_url:
-      return yt_url
-    else:
-      raise Exception(f"Fail to get youtube url.\n\nLast.FM url : {LAST_FM_URL}")
-  # status가 200이 아니면 에러 반환
-  else:
-    raise Exception(f"Fail to get web response.\n\nStatus code : {status}")
   
 def get_youtube_url(LAST_FM_URL:str, headers:dict=headers)->str:
   '''
