@@ -6,7 +6,7 @@ index cb27f21..1b33c9f 100644
          self.hyperparameters.update(hyperparameters)
          self.verbose = verbose
          self.energy_shifter = torchani.utils.EnergyShifter(None)
-+        self.model_idx = kwargs.get('model_idx', None)
++        self.model_index = kwargs.get('model_index', None)
          if 'key' in kwargs:
              self.key = kwargs['key']
          else:
@@ -15,13 +15,13 @@ index cb27f21..1b33c9f 100644
          self.hyperparameters.update(hyperparameters)
          if 'ANI-1x'.casefold() in method.casefold():
 -            model = torchani.models.ANI1x(periodic_table_index=True).to(self.device)
-+            model = torchani.models.ANI1x(periodic_table_index=True, model_idx=self.model_idx).to(self.device)
++            model = torchani.models.ANI1x(periodic_table_index=True, model_index=self.model_index).to(self.device)
          elif 'ANI-1ccx'.casefold() in method.casefold():
 -            model = torchani.models.ANI1ccx(periodic_table_index=True).to(self.device)
-+            model = torchani.models.ANI1ccx(periodic_table_index=True, model_idx=self.model_idx).to(self.device)
++            model = torchani.models.ANI1ccx(periodic_table_index=True, model_index=self.model_index).to(self.device)
          elif 'ANI-2x'.casefold() in method.casefold():
 -            model = torchani.models.ANI2x(periodic_table_index=True).to(self.device)
-+            model = torchani.models.ANI2x(periodic_table_index=True, model_idx=self.model_idx).to(self.device)
++            model = torchani.models.ANI2x(periodic_table_index=True, model_index=self.model_index).to(self.device)
          else:
              print("method not found, please check ANI_methods().available_methods")
              return
