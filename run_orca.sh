@@ -615,11 +615,11 @@ ENERGY_SCRIPT
 # For Compound Script: Extract energies from both steps
 
 # Find boundary between Step 1 and Step 2 (for %compound block)
-STEP2_START=$(grep -n "STARTING COMPOUND STEP   2" "$OUT_FILE" | head -1 | cut -d: -f1)
+STEP2_START=$(grep -n "COMPOUND JOB  2" "$OUT_FILE" | head -1 | cut -d: -f1)
 
 if [ -z "$STEP2_START" ]; then
     # Fallback: look for other markers
-    STEP2_START=$(grep -n "Step 2:" "$OUT_FILE" | head -1 | cut -d: -f1)
+    STEP2_START=$(grep -n "STARTING COMPOUND STEP" "$OUT_FILE" | tail -1 | cut -d: -f1)
 fi
 
 # Ensure STEP2_START is a valid number, otherwise use total line count
