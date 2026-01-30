@@ -489,9 +489,7 @@ New_Step
   ! ${STEP2_METHOD} ${STEP2_BASIS} ${STEP2_RI} ${STEP2_DISP} ${SOLVENT} TightSCF ${STEP2_GRID}
   %pal nprocs ${NPROCS} end
   %maxcore ${MAXCORE}
-  * xyz ${CHARGE} ${SPIN}
-  {lastgeom}
-  *
+  *xyzfile ${CHARGE} ${SPIN} ${OUTPUT_NAME}_Compound_1.xyz
 Step_End
 
 end
@@ -779,3 +777,5 @@ read -p "Submit now? [y/n, default=y]: " SUBMIT_NOW
 SUBMIT_NOW=${SUBMIT_NOW:-y}
 if [[ "$SUBMIT_NOW" =~ ^[Yy]$ ]]; then
     sbatch "submit_${OUTPUT_NAME}.sh"
+fi
+# good luck bruhhhhh
