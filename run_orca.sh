@@ -565,7 +565,7 @@ PARTITION_LINE=""
 
 # Determine if energy extraction is needed
 EXTRACT_ENERGY=false
-if [ "$USE_COMPOUND" = true ] || [[ "$CALC_TYPE" == *"Freq"* ]]; then
+if [ "$USE_COMPOUND" = true ] || [ "$USE_THREE_STEP" = true ] || [[ "$CALC_TYPE" == *"Freq"* ]]; then
     EXTRACT_ENERGY=true
 fi
 
@@ -642,6 +642,27 @@ G_THERMO=$(tac "$OUT_FILE" | grep -m1 "Final Gibbs free energy" | awk '{for(i=1;
 
 
 ENERGY_SCRIPT
+
+    # --- ADDED: 3-Step Workflow extraction (Opt SVP > Opt TZVPPD > Freq TZVPPD) ---
+    if [ "$USE_THREE_STEP" = true ]; then
+        cat >> "submit_${OUTPUT_NAME}.sh" << 'THREE_STEP_SCRIPT'
+
+# Energy extraction for 3-Step Workflow (Step 3: Freq at TZVPPD)
+# Find the starting line of the final frequency step
+STEP3_START=$(grep -n "COMPOUND JOB  3" "$OUT_FILE" | tail -1 | cut -d: -f1)
+
+if [ -n "$STEP3_START" ]; then
+    # Extract Electronic and Gibbs energy from Step 3 section only
+    E_ELECT_STEP3_LINE=$(sed -n "${STEP3_START},\$p" "$OUT_FILE" | grep "Electronic energy" | tail -1)
+    G_THERMO_STEP3_LINE=$(sed -n "${STEP3_START},\$p" "$OUT_FILE" | grep "Final Gibbs free energy" | tail -1)
+    
+    # Parse numeric values for the final summary
+    E_SP_FINAL=$(echo "$E_ELECT_STEP3_LINE" | awk '{for(i=1;i<=NF;i++) if($i ~ /^-?[0-9]+\.[0-9]+$/) print $i}' | head -1)
+    G_THERMO_FINAL=$(echo "$G_THERMO_STEP3_LINE" | awk '{for(i=1;i<=NF;i++) if($i ~ /^-?[0-9]+\.[0-9]+$/) print $i}' | head -1)
+fi
+
+THREE_STEP_SCRIPT
+    fi
 
     # Add compound-specific extraction
     if [ "$USE_COMPOUND" = true ]; then
@@ -726,6 +747,25 @@ SUMMARY_SCRIPT
     [ -n "$G_CORRECTED" ] && echo "  G = $G_CORRECTED Eh"
     echo "----------------------------------------"
 COMPOUND_SUMMARY
+
+# Summary for 3-Step Workflow
+elif [ "$USE_THREE_STEP" = true ]; then
+        cat >> "submit_${OUTPUT_NAME}.sh" << 'THREE_STEP_SUMMARY'
+    echo "[3-Step Workflow Results]"
+    echo "Path: Opt(SVP) > Opt(TZVPPD) > Freq(TZVPPD)"
+    echo ""
+    if [ -n "$E_ELECT_STEP3_LINE" ]; then
+        echo "  $E_ELECT_STEP3_LINE"
+    fi
+    if [ -n "$G_THERMO_STEP3_LINE" ]; then
+        echo "  $G_THERMO_STEP3_LINE"
+    fi
+    echo ""
+    echo "----------------------------------------"
+    echo "  Final Gibbs Free Energy: $G_THERMO_FINAL Eh"
+    echo "----------------------------------------"
+THREE_STEP_SUMMARY
+
     else
         cat >> "submit_${OUTPUT_NAME}.sh" << 'SINGLE_SUMMARY'
 
@@ -814,4 +854,5 @@ if [[ "$SUBMIT_NOW" =~ ^[Yy]$ ]]; then
     sbatch "submit_${OUTPUT_NAME}.sh"
 fi
 # good luck bruhhhhh
+
 
