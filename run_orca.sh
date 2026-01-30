@@ -125,7 +125,7 @@ check_slurm_resources() {
             if [ "$IDLE" != "N/A" ] && [ "$IDLE" -gt 0 ] 2>/dev/null; then
                 if [ "$NPROCS" -gt "$IDLE" ]; then
                     echo -e "${BG_YELLOW}${WHITE} WARNING: Requesting ${NPROCS} cores, but only ${IDLE} idle. Job may be queued. ${NC}"
-                    read -p "Continue anyway? [y/N]: " CONTINUE
+                    read -p "Continue anyway? [y/n]: " CONTINUE
                     if [[ ! "$CONTINUE" =~ ^[Yy]$ ]]; then
                         continue
                     fi
@@ -349,7 +349,7 @@ done
 # MO saving (ORCA 6 syntax)
 # =============================================================================
 echo -e "${YELLOW}====================================${NC}"
-read -p "Save MO? [y/N]: " SAVE_MO
+read -p "Save MO? [y/n, default=n]: " SAVE_MO
 
 OUTPUT_BLOCK=""
 if [[ "$SAVE_MO" =~ ^[Yy]$ ]]; then
@@ -608,7 +608,8 @@ echo -e "${BG_GREEN}${WHITE}====================================${NC}"
 # =============================================================================
 # Auto submit option
 # =============================================================================
-read -p "Submit now? [y/N]: " SUBMIT_NOW
+read -p "Submit now? [y/n, default=y]: " SUBMIT_NOW
+SUBMIT_NOW=${SUBMIT_NOW:-y}
 if [[ "$SUBMIT_NOW" =~ ^[Yy]$ ]]; then
     sbatch "submit_${OUTPUT_NAME}.sh"
 fi
