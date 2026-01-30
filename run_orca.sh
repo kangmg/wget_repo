@@ -11,7 +11,7 @@
 # Modify these variables according to your environment
 
 # ORCA installation path (REQUIRED)
-ORCA_PATH="/opt/orca/orca_6_1_1/orca"
+ORCA_PATH="/opt/orca/orca_6_1_1"
 
 # Default number of CPU cores per job (can be changed interactively)
 DEFAULT_NPROCS=6
@@ -537,6 +537,12 @@ fi
 PARTITION_LINE=""
 [ -n "$SLURM_PARTITION" ] && PARTITION_LINE="#SBATCH --partition=${SLURM_PARTITION}"
 
+# Determine if energy extraction is needed
+EXTRACT_ENERGY=false
+if [ "$USE_COMPOUND" = true ] || [[ "$CALC_TYPE" == *"Freq"* ]]; then
+    EXTRACT_ENERGY=true
+fi
+
 cat > "submit_${OUTPUT_NAME}.sh" << EOF
 #!/bin/bash
 #SBATCH --job-name=${OUTPUT_NAME}
@@ -569,6 +575,169 @@ echo "========================================"
 echo "End:     \$(date)"
 echo "========================================"
 EOF
+
+# Add energy extraction for Freq and Compound calculations
+if [ "$EXTRACT_ENERGY" = true ]; then
+    cat >> "submit_${OUTPUT_NAME}.sh" << 'ENERGY_SCRIPT'
+
+# =============================================================================
+# Energy Extraction and Summary
+# =============================================================================
+OUT_FILE="${OUTPUT_NAME}.out"
+SUMMARY_FILE="${OUTPUT_NAME}_energy_summary.txt"
+
+echo ""
+echo "========================================"
+echo "Extracting energies..."
+echo "========================================"
+
+# Extract energies - search from bottom of file and show full lines
+E_ELECT_LINE=$(tac "$OUT_FILE" | grep -m1 "Electronic energy")
+TOTAL_ENERGY_LINE=$(tac "$OUT_FILE" | grep -m1 "Total energy")
+DISP_CORR_LINE=$(tac "$OUT_FILE" | grep -m1 "Dispersion correction")
+ZPE_LINE=$(tac "$OUT_FILE" | grep -m1 "Non-thermal (ZPE) correction")
+THERMAL_CORR_LINE=$(tac "$OUT_FILE" | grep -m1 "Total thermal correction")
+ENTROPY_LINE=$(tac "$OUT_FILE" | grep -m1 "Final entropy term")
+
+# Extract numeric values for calculations
+E_ELECT=$(echo "$E_ELECT_LINE" | awk '{for(i=1;i<=NF;i++) if($i ~ /^-?[0-9]+\.[0-9]+$/) print $i}' | head -1)
+TOTAL_ENERGY=$(echo "$TOTAL_ENERGY_LINE" | awk '{for(i=1;i<=NF;i++) if($i ~ /^-?[0-9]+\.[0-9]+$/) print $i}' | head -1)
+DISP_CORR=$(echo "$DISP_CORR_LINE" | awk '{for(i=1;i<=NF;i++) if($i ~ /^-?[0-9]+\.[0-9]+$/) print $i}' | head -1)
+ZPE=$(echo "$ZPE_LINE" | awk '{for(i=1;i<=NF;i++) if($i ~ /^-?[0-9]+\.[0-9]+$/) print $i}' | head -1)
+G_CORR=$(echo "$THERMAL_CORR_LINE" | awk '{for(i=1;i<=NF;i++) if($i ~ /^-?[0-9]+\.[0-9]+$/) print $i}' | head -1)
+ENTROPY=$(echo "$ENTROPY_LINE" | awk '{for(i=1;i<=NF;i++) if($i ~ /^-?[0-9]+\.[0-9]+$/) print $i}' | head -1)
+
+# Also extract FINAL SINGLE POINT ENERGY for backward compatibility
+FINAL_SP=$(grep "FINAL SINGLE POINT ENERGY" "$OUT_FILE" | tail -1 | awk '{print $5}')
+
+# Extract Gibbs free energy from thermochemistry
+G_THERMO=$(tac "$OUT_FILE" | grep -m1 "Final Gibbs free energy" | awk '{for(i=1;i<=NF;i++) if($i ~ /^-?[0-9]+\.[0-9]+$/) print $i}' | head -1)
+
+
+
+ENERGY_SCRIPT
+
+    # Add compound-specific extraction
+    if [ "$USE_COMPOUND" = true ]; then
+        cat >> "submit_${OUTPUT_NAME}.sh" << 'COMPOUND_SCRIPT'
+
+# For Compound Script: Extract energies from both steps
+
+# Find boundary between Step 1 and Step 2
+STEP2_START=$(grep -n "\$new_job" "$OUT_FILE" | head -1 | cut -d: -f1)
+
+if [ -z "$STEP2_START" ]; then
+    # Fallback: look for "Step 2:" marker or second calculation start
+    STEP2_START=$(grep -n "Step 2:" "$OUT_FILE" | head -1 | cut -d: -f1)
+fi
+
+# Extract Step 1 energies (from beginning to Step 2 start)
+E_ELECT_STEP1_LINE=$(sed -n "1,${STEP2_START}p" "$OUT_FILE" | tac | grep -m1 "Electronic energy")
+ZPE_STEP1_LINE=$(sed -n "1,${STEP2_START}p" "$OUT_FILE" | tac | grep -m1 "Non-thermal (ZPE) correction")
+G_CORR_STEP1_LINE=$(sed -n "1,${STEP2_START}p" "$OUT_FILE" | tac | grep -m1 "Total thermal correction")
+G_THERMO_STEP1_LINE=$(sed -n "1,${STEP2_START}p" "$OUT_FILE" | tac | grep -m1 "Final Gibbs free energy")
+
+E_FREQ=$(echo "$E_ELECT_STEP1_LINE" | awk '{for(i=1;i<=NF;i++) if($i ~ /^-?[0-9]+\.[0-9]+$/) print $i}' | head -1)
+ZPE_STEP1=$(echo "$ZPE_STEP1_LINE" | awk '{for(i=1;i<=NF;i++) if($i ~ /^-?[0-9]+\.[0-9]+$/) print $i}' | head -1)
+G_CORR_STEP1=$(echo "$G_CORR_STEP1_LINE" | awk '{for(i=1;i<=NF;i++) if($i ~ /^-?[0-9]+\.[0-9]+$/) print $i}' | head -1)
+G_THERMO_STEP1=$(echo "$G_THERMO_STEP1_LINE" | awk '{for(i=1;i<=NF;i++) if($i ~ /^-?[0-9]+\.[0-9]+$/) print $i}' | head -1)
+
+# Extract Step 2 energies (from Step 2 start to end)
+E_ELECT_STEP2_LINE=$(sed -n "${STEP2_START},\$p" "$OUT_FILE" | tac | grep -m1 "Electronic energy")
+E_SP=$(echo "$E_ELECT_STEP2_LINE" | awk '{for(i=1;i<=NF;i++) if($i ~ /^-?[0-9]+\.[0-9]+$/) print $i}' | head -1)
+
+# Calculate corrected Gibbs energy: G = E(SP) + G_corr
+if [ -n "$E_SP" ] && [ -n "$G_CORR_STEP1" ]; then
+    G_CORRECTED=$(echo "$E_SP + $G_CORR_STEP1" | bc -l)
+fi
+
+
+COMPOUND_SCRIPT
+    fi
+
+    # Add summary output
+    cat >> "submit_${OUTPUT_NAME}.sh" << 'SUMMARY_SCRIPT'
+# Write summary file
+{
+    echo "========================================"
+    echo "     ORCA Energy Summary"
+    echo "========================================"
+    echo "Output file: $OUT_FILE"
+    echo "Generated:   $(date)"
+    echo "========================================"
+    echo ""
+SUMMARY_SCRIPT
+
+    if [ "$USE_COMPOUND" = true ]; then
+        cat >> "submit_${OUTPUT_NAME}.sh" << 'COMPOUND_SUMMARY'
+    echo "[Compound Script Results]"
+    echo ""
+    echo "Step 1 (Opt+Freq / def2-SVP):"
+    if [ -n "$E_ELECT_STEP1_LINE" ]; then
+        echo "  $E_ELECT_STEP1_LINE"
+    fi
+    if [ -n "$ZPE_STEP1_LINE" ]; then
+        echo "  $ZPE_STEP1_LINE"
+    fi
+    if [ -n "$G_CORR_STEP1_LINE" ]; then
+        echo "  $G_CORR_STEP1_LINE"
+    fi
+    if [ -n "$G_THERMO_STEP1_LINE" ]; then
+        echo "  $G_THERMO_STEP1_LINE"
+    fi
+    echo ""
+    echo "Step 2 (SP / def2-TZVPPD):"
+    [ -n "$E_ELECT_STEP2_LINE" ] && echo "  $E_ELECT_STEP2_LINE"
+    echo ""
+    echo "----------------------------------------"
+    echo "[Final Corrected Gibbs Energy]"
+    echo "  G = E(SP/TZVPPD) + G_corr(Freq/SVP)"
+    [ -n "$G_CORRECTED" ] && echo "  G = $G_CORRECTED Eh"
+    echo "----------------------------------------"
+COMPOUND_SUMMARY
+    else
+        cat >> "submit_${OUTPUT_NAME}.sh" << 'SINGLE_SUMMARY'
+
+SINGLE_SUMMARY
+    fi
+    echo "[Single Calculation Results]"
+    echo ""
+    if [ -n "$E_ELECT_LINE" ]; then
+        echo "  $E_ELECT_LINE"
+    fi
+    if [ -n "$TOTAL_ENERGY_LINE" ]; then
+        echo "  $TOTAL_ENERGY_LINE"
+    fi
+    if [ -n "$DISP_CORR_LINE" ]; then
+        echo "  $DISP_CORR_LINE"
+    fi
+    if [ -n "$ZPE_LINE" ]; then
+        echo "  $ZPE_LINE"
+    fi
+    if [ -n "$THERMAL_CORR_LINE" ]; then
+        echo "  $THERMAL_CORR_LINE"
+    fi
+    if [ -n "$ENTROPY_LINE" ]; then
+        echo "  $ENTROPY_LINE"
+    fi
+    if [ -n "$G_THERMO" ]; then
+        echo ""
+        echo "  Final Gibbs free energy:              $G_THERMO Eh"
+    fi
+    cat >> "submit_${OUTPUT_NAME}.sh" << 'END_SUMMARY'
+    echo ""
+    echo "========================================"
+} > "$SUMMARY_FILE"
+
+# Display summary
+cat "$SUMMARY_FILE"
+echo ""
+echo "Summary saved to: $SUMMARY_FILE"
+END_SUMMARY
+
+    # Replace placeholder with actual output name
+    sed -i "s/\${OUTPUT_NAME}/${OUTPUT_NAME}/g" "submit_${OUTPUT_NAME}.sh"
+fi
 
 chmod +x "submit_${OUTPUT_NAME}.sh"
 echo -e "${GREEN}[OK]${NC} submit_${OUTPUT_NAME}.sh created"
@@ -612,4 +781,5 @@ read -p "Submit now? [y/n, default=y]: " SUBMIT_NOW
 SUBMIT_NOW=${SUBMIT_NOW:-y}
 if [[ "$SUBMIT_NOW" =~ ^[Yy]$ ]]; then
     sbatch "submit_${OUTPUT_NAME}.sh"
+
 fi
