@@ -638,9 +638,9 @@ ZPE_STEP1=$(echo "$ZPE_STEP1_LINE" | awk '{for(i=1;i<=NF;i++) if($i ~ /^-?[0-9]+
 G_CORR_STEP1=$(echo "$G_CORR_STEP1_LINE" | awk '{for(i=1;i<=NF;i++) if($i ~ /^-?[0-9]+\.[0-9]+$/) print $i}' | head -1)
 G_THERMO_STEP1=$(echo "$G_THERMO_STEP1_LINE" | awk '{for(i=1;i<=NF;i++) if($i ~ /^-?[0-9]+\.[0-9]+$/) print $i}' | head -1)
 
-# Extract Step 2 energies (from Step 2 start to end)
-E_ELECT_STEP2_LINE=$(sed -n "${STEP2_START},\$p" "$OUT_FILE" | tac | grep -m1 "Electronic energy")
-E_SP=$(echo "$E_ELECT_STEP2_LINE" | awk '{for(i=1;i<=NF;i++) if($i ~ /^-?[0-9]+\.[0-9]+$/) print $i}' | head -1)
+# Extract Step 2 energies (from Step 2 start to end) - SP uses "FINAL SINGLE POINT ENERGY"
+E_ELECT_STEP2_LINE=$(sed -n "${STEP2_START},\$p" "$OUT_FILE" | grep "FINAL SINGLE POINT ENERGY" | tail -1)
+E_SP=$(echo "$E_ELECT_STEP2_LINE" | awk '{print $5}')
 
 # Calculate corrected Gibbs energy: G = E(SP) + G_corr
 if [ -n "$E_SP" ] && [ -n "$G_CORR_STEP1" ]; then
