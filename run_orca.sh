@@ -421,16 +421,10 @@ end
 fi
 
 # =============================================================================
-# Generate filename (includes current folder name)
+# Generate filename (just folder name)
 # =============================================================================
 FOLDER_NAME="${PWD##*/}"
-if [ "$SP_CORRECTION" = true ]; then
-    OUTPUT_NAME="${FOLDER_NAME}_${CALC_NAME}_${FUNCTIONAL}_def2-TZVPPD"
-else
-    OUTPUT_NAME="${FOLDER_NAME}_${CALC_NAME}_${FUNCTIONAL}"
-    [ -n "$BASIS" ] && OUTPUT_NAME="${OUTPUT_NAME}_${BASIS}"
-fi
-OUTPUT_NAME=$(echo "$OUTPUT_NAME" | tr ' ' '_' | tr -cd '[:alnum:]_-')
+OUTPUT_NAME=$(echo "$FOLDER_NAME" | tr ' ' '_' | tr -cd '[:alnum:]_-')
 
 # =============================================================================
 # Generate input.inp
@@ -439,35 +433,33 @@ echo -e "${YELLOW}====================================${NC}"
 echo -e "Creating: ${GREEN}${OUTPUT_NAME}.inp${NC}"
 
 if [ "$USE_COMPOUND" = true ]; then
-    # Compound Script: Step 1 (Opt+Freq with small basis) > Step 2 (SP with large basis)
+    # Compound Script using %compound block (ORCA 6 recommended syntax)
 
     # Build Step 1 keywords (Opt + Freq with small basis)
-    STEP1_KEYWORDS="! UKS ${FUNCTIONAL}"
+    STEP1_METHOD="UKS ${FUNCTIONAL}"
     if [ "$FUNCTIONAL" = "r2SCAN-3c" ]; then
-        # r2SCAN-3c has built-in basis
-        STEP1_KEYWORDS="${STEP1_KEYWORDS}"
+        STEP1_BASIS=""
+        STEP1_RI=""
     else
-        STEP1_KEYWORDS="${STEP1_KEYWORDS} def2-SVP"
-        [ -n "$USE_RI" ] && STEP1_KEYWORDS="${STEP1_KEYWORDS} ${USE_RI}"
+        STEP1_BASIS="def2-SVP"
+        STEP1_RI="${USE_RI}"
     fi
-    [ -n "$DISPERSION" ] && STEP1_KEYWORDS="${STEP1_KEYWORDS} ${DISPERSION}"
-    STEP1_KEYWORDS="${STEP1_KEYWORDS} ${CALC_TYPE}"
-    [ -n "$SOLVENT" ] && STEP1_KEYWORDS="${STEP1_KEYWORDS} ${SOLVENT}"
-    STEP1_KEYWORDS="${STEP1_KEYWORDS} TightOpt TightSCF"
-    [ "$FUNCTIONAL" != "r2SCAN-3c" ] && STEP1_KEYWORDS="${STEP1_KEYWORDS} ${DFT_GRID}"
+    STEP1_DISP="${DISPERSION}"
+    STEP1_GRID="${DFT_GRID}"
 
-    # Build Step 2 keywords (SP with large basis and fine grid)
-    STEP2_KEYWORDS="! UKS ${FUNCTIONAL}"
+    # Build Step 2 keywords (SP with large basis)
     if [ "$FUNCTIONAL" = "r2SCAN-3c" ]; then
-        # For r2SCAN-3c, switch to r2SCAN with explicit large basis for SP
-        STEP2_KEYWORDS="! UKS r2SCAN def2-TZVPPD def2/J RIJCOSX D4"
+        STEP2_METHOD="UKS r2SCAN"
+        STEP2_BASIS="def2-TZVPPD"
+        STEP2_RI="def2/J RIJCOSX"
+        STEP2_DISP="D4"
     else
-        STEP2_KEYWORDS="${STEP2_KEYWORDS} def2-TZVPPD"
-        [ -n "$USE_RI" ] && STEP2_KEYWORDS="${STEP2_KEYWORDS} ${USE_RI}"
-        [ -n "$DISPERSION" ] && STEP2_KEYWORDS="${STEP2_KEYWORDS} ${DISPERSION}"
+        STEP2_METHOD="UKS ${FUNCTIONAL}"
+        STEP2_BASIS="def2-TZVPPD"
+        STEP2_RI="${USE_RI}"
+        STEP2_DISP="${DISPERSION}"
     fi
-    [ -n "$SOLVENT" ] && STEP2_KEYWORDS="${STEP2_KEYWORDS} ${SOLVENT}"
-    STEP2_KEYWORDS="${STEP2_KEYWORDS} TightSCF ${DFT_GRID_SP}"
+    STEP2_GRID="${DFT_GRID_SP}"
 
     cat > "${OUTPUT_NAME}.inp" << EOF
 # ORCA 6.1 Compound Script
@@ -475,33 +467,34 @@ if [ "$USE_COMPOUND" = true ]; then
 # Functional: ${FUNCTIONAL}
 # Step 1: ${CALC_TYPE} with def2-SVP (or r2SCAN-3c basis)
 # Step 2: SP with def2-TZVPPD
+# Using %compound block for proper multi-step calculation
+
+%compound
 
 # =============================================================================
 # Step 1: Optimization + Frequency (small basis)
 # =============================================================================
-${STEP1_KEYWORDS}
-
-${GEOM_BLOCK}${OUTPUT_BLOCK}%pal
-  nprocs ${NPROCS}
-end
-
-%maxcore ${MAXCORE}
-
-*xyzfile ${CHARGE} ${SPIN} coord.xyz
+New_Step
+  ! ${STEP1_METHOD} ${STEP1_BASIS} ${STEP1_RI} ${STEP1_DISP} ${CALC_TYPE} ${SOLVENT} TightOpt TightSCF ${STEP1_GRID}
+  ${GEOM_BLOCK}${OUTPUT_BLOCK}%pal nprocs ${NPROCS} end
+  %maxcore ${MAXCORE}
+  *xyzfile ${CHARGE} ${SPIN} coord.xyz
+Step_End
 
 # =============================================================================
 # Step 2: Single Point Correction (large basis - def2-TZVPPD)
+# Uses optimized geometry from Step 1
 # =============================================================================
-\$new_job
-${STEP2_KEYWORDS}
+New_Step
+  ! ${STEP2_METHOD} ${STEP2_BASIS} ${STEP2_RI} ${STEP2_DISP} ${SOLVENT} TightSCF ${STEP2_GRID}
+  %pal nprocs ${NPROCS} end
+  %maxcore ${MAXCORE}
+  * xyz ${CHARGE} ${SPIN}
+  {lastgeom}
+  *
+Step_End
 
-%pal
-  nprocs ${NPROCS}
 end
-
-%maxcore ${MAXCORE}
-
-*xyzfile ${CHARGE} ${SPIN} ${OUTPUT_NAME}.xyz
 EOF
 
     echo -e "${GREEN}[OK]${NC} ${OUTPUT_NAME}.inp created (Compound Script)"
@@ -552,8 +545,8 @@ cat > "submit_${OUTPUT_NAME}.sh" << EOF
 #SBATCH --mem=${SLURM_MEM}
 #SBATCH --time=${SLURM_TIME}
 ${PARTITION_LINE}
-#SBATCH --output=%x_%j.out
-#SBATCH --error=%x_%j.err
+#SBATCH --output=slurm_%j.out
+#SBATCH --error=slurm_%j.err
 
 export PATH="${ORCA_PATH}:\${PATH}"
 export LD_LIBRARY_PATH="${ORCA_PATH}:\${LD_LIBRARY_PATH}"
@@ -584,7 +577,7 @@ if [ "$EXTRACT_ENERGY" = true ]; then
 # Energy Extraction and Summary
 # =============================================================================
 OUT_FILE="${OUTPUT_NAME}.out"
-SUMMARY_FILE="${OUTPUT_NAME}_energy_summary.txt"
+SUMMARY_FILE="ENERGY_SUMMARY.txt"
 
 echo ""
 echo "========================================"
@@ -623,12 +616,17 @@ ENERGY_SCRIPT
 
 # For Compound Script: Extract energies from both steps
 
-# Find boundary between Step 1 and Step 2
-STEP2_START=$(grep -n "\$new_job" "$OUT_FILE" | head -1 | cut -d: -f1)
+# Find boundary between Step 1 and Step 2 (for %compound block)
+STEP2_START=$(grep -n "STARTING COMPOUND STEP   2" "$OUT_FILE" | head -1 | cut -d: -f1)
 
 if [ -z "$STEP2_START" ]; then
-    # Fallback: look for "Step 2:" marker or second calculation start
+    # Fallback: look for other markers
     STEP2_START=$(grep -n "Step 2:" "$OUT_FILE" | head -1 | cut -d: -f1)
+fi
+
+# Ensure STEP2_START is a valid number, otherwise use total line count
+if ! [[ "$STEP2_START" =~ ^[0-9]+$ ]] || [ -z "$STEP2_START" ]; then
+    STEP2_START=$(wc -l < "$OUT_FILE")
 fi
 
 # Extract Step 1 energies (from beginning to Step 2 start)
@@ -781,5 +779,3 @@ read -p "Submit now? [y/n, default=y]: " SUBMIT_NOW
 SUBMIT_NOW=${SUBMIT_NOW:-y}
 if [[ "$SUBMIT_NOW" =~ ^[Yy]$ ]]; then
     sbatch "submit_${OUTPUT_NAME}.sh"
-
-fi
