@@ -245,10 +245,13 @@ echo "  5) IRC"
 echo "  6) Single Point"
 echo "  7) Freq only"
 echo "  8) SP Correction only (def2-TZVPPD)"
+echo "  9) Opt(SVP) > Opt(TZVPPD) > Freq(TZVPPD)"
+echo "  10) TS Opt(SVP) > TS Opt(TZVPPD) > Freq(TZVPPD)"
 
 USE_COMPOUND=false
+USE_THREE_STEP=false
 while true; do
-    read -p "Select [1-8]: " CALC_CHOICE
+    read -p "Select [1-10]: " CALC_CHOICE
     case $CALC_CHOICE in
         1) CALC_TYPE="OPT Freq"; CALC_NAME="opt_freq"; break ;;
         2) CALC_TYPE="OPT Freq"; CALC_NAME="opt_freq_sp"; USE_COMPOUND=true; break ;;
@@ -258,6 +261,8 @@ while true; do
         6) CALC_TYPE=""; CALC_NAME="sp"; break ;;
         7) CALC_TYPE="Freq"; CALC_NAME="freq"; break ;;
         8) CALC_TYPE=""; CALC_NAME="sp_correction"; SP_CORRECTION=true; break ;;
+        9) CALC_TYPE="OPT"; CALC_NAME="step_opt_freq_tz"; USE_THREE_STEP=true; break ;;
+        10) CALC_TYPE="OptTS"; CALC_NAME="step_tsopt_freq_tz"; USE_THREE_STEP=true; break ;;
         *) echo -e "${BG_RED}${WHITE} Invalid choice. ${NC}" ;;
     esac
 done
@@ -432,7 +437,37 @@ OUTPUT_NAME=$(echo "$FOLDER_NAME" | tr ' ' '_' | tr -cd '[:alnum:]_-')
 echo -e "${YELLOW}====================================${NC}"
 echo -e "Creating: ${GREEN}${OUTPUT_NAME}.inp${NC}"
 
-if [ "$USE_COMPOUND" = true ]; then
+if [ "$USE_THREE_STEP" = true ]; then
+    # 3-Step Workflow: Opt(SVP) > Opt(TZVPPD) > Freq(TZVPPD)
+    cat > "${OUTPUT_NAME}.inp" << EOF
+# ORCA 6.1 3-Step Workflow
+# Step 1: ${CALC_TYPE} (def2-SVP)
+# Step 2: ${CALC_TYPE} (def2-TZVPPD)
+# Step 3: Freq (def2-TZVPPD)
+
+%compound
+New_Step
+  ! UKS ${FUNCTIONAL} def2-SVP ${USE_RI} ${DISPERSION} ${CALC_TYPE} ${SOLVENT} TightOpt TightSCF ${DFT_GRID}
+  ${GEOM_BLOCK}%pal nprocs ${NPROCS} end %maxcore ${MAXCORE}
+  *xyzfile ${CHARGE} ${SPIN} coord.xyz
+Step_End
+
+New_Step
+  ! UKS ${FUNCTIONAL} def2-TZVPPD ${USE_RI} ${DISPERSION} ${CALC_TYPE} ${SOLVENT} TightOpt TightSCF ${DFT_GRID_SP}
+  ${GEOM_BLOCK}%pal nprocs ${NPROCS} end %maxcore ${MAXCORE}
+  *xyzfile ${CHARGE} ${SPIN} ${OUTPUT_NAME}_Compound_1.xyz
+Step_End
+
+New_Step
+  ! UKS ${FUNCTIONAL} def2-TZVPPD ${USE_RI} ${DISPERSION} Freq ${SOLVENT} TightSCF ${DFT_GRID_SP}
+  %pal nprocs ${NPROCS} end %maxcore ${MAXCORE}
+  *xyzfile ${CHARGE} ${SPIN} ${OUTPUT_NAME}_Compound_2.xyz
+Step_End
+end
+EOF
+    echo -e "${GREEN}[OK]${NC} ${OUTPUT_NAME}.inp created (3-Step Workflow)"
+
+elif [ "$USE_COMPOUND" = true ]; then
     # Compound Script using %compound block (ORCA 6 recommended syntax)
 
     # Build Step 1 keywords (Opt + Freq with small basis)
@@ -779,3 +814,4 @@ if [[ "$SUBMIT_NOW" =~ ^[Yy]$ ]]; then
     sbatch "submit_${OUTPUT_NAME}.sh"
 fi
 # good luck bruhhhhh
+
